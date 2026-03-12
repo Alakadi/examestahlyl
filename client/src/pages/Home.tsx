@@ -4,13 +4,20 @@ import { Card } from "@/components/ui/card";
 import { Loader2, BookOpen, BarChart3, Users, ChevronRight, Sparkles, GraduationCap } from "lucide-react";
 import { getLoginUrl } from "@/const";
 import { useLocation } from "wouter";
-import { trpc } from "@/lib/trpc";
+import { useQuery } from "@tanstack/react-query";
+import { subjectsAPI } from "@/lib/api";
 
 export default function Home() {
   const { user, loading, isAuthenticated, logout } = useAuth();
   const [, navigate] = useLocation();
 
-  const subjectsQuery = trpc.subjects.getAll.useQuery();
+  const { data: subjectsResponse, isLoading: subjectsLoading } = useQuery({
+    queryKey: ["subjects"],
+    queryFn: async () => {
+      const response = await subjectsAPI.getAll();
+      return response.data;
+    },
+  });
 
   if (loading) {
     return (
@@ -20,7 +27,7 @@ export default function Home() {
     );
   }
 
-  const subjects = subjectsQuery.data || [];
+  const subjects = subjectsResponse || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -143,7 +150,7 @@ export default function Home() {
           </div>
         </div>
 
-        {subjectsQuery.isLoading ? (
+        {subjectsLoading ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
           </div>
@@ -153,7 +160,7 @@ export default function Home() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {subjects.map((subject) => (
+            {subjects.map((subject: any) => (
               <Card
                 key={subject.id}
                 className="bg-slate-900 border border-slate-800 p-8 hover:border-blue-500/50 transition-all cursor-pointer group relative overflow-hidden"

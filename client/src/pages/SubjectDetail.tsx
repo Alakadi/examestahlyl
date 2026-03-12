@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Lock, Play, Loader2, ChevronRight, BookOpen, Layers } from "lucide-react";
 import { useState } from "react";
-import { trpc } from "@/lib/trpc";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { subjectsAPI, examsAPI, sectionsAPI, examCodesAPI } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function SubjectDetail() {
@@ -15,22 +16,44 @@ export default function SubjectDetail() {
   const [code, setCode] = useState("");
   const [isValidating, setIsValidating] = useState(false);
 
-  const subjectQuery = trpc.subjects.getById.useQuery({ id: subjectId });
-  const examsQuery = trpc.exams.getBySubject.useQuery({ subjectId });
-  const sectionsQuery = trpc.sections.getBySubject.useQuery({ subjectId });
-  const validateCodeMutation = trpc.examCodes.validate.useMutation();
+  const { data: subject, isLoading: subjectLoading } = useQuery({
+    queryKey: ["subject", subjectId],
+    queryFn: async () => {
+      const response = await subjectsAPI.getById(subjectId);
+      return response.data;
+    },
+  });
 
-  if (subjectQuery.isLoading || examsQuery.isLoading || sectionsQuery.isLoading) {
+  const { data: exams, isLoading: examsLoading } = useQuery({
+    queryKey: ["exams", subjectId],
+    queryFn: async () => {
+      const response = await examsAPI.getBySubject(subjectId);
+      return response.data;
+    },
+  });
+
+  const { data: sections, isLoading: sectionsLoading } = useQuery({
+    queryKey: ["sections", subjectId],
+    queryFn: async () => {
+      const response = await sectionsAPI.getBySubject(subjectId);
+      return response.data;
+    },
+  });
+
+  const validateCodeMutation = useMutation({
+    mutationFn: async (codeValue: string) => {
+      const response = await examCodesAPI.validate(codeValue);
+      return response.data;
+    },
+  });
+
+  if (subjectLoading || examsLoading || sectionsLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
       </div>
     );
   }
-
-  const subject = subjectQuery.data;
-  const exams = examsQuery.data || [];
-  const sections = sectionsQuery.data || [];
 
   if (!subject) {
     return (
@@ -49,7 +72,7 @@ export default function SubjectDetail() {
 
     setIsValidating(true);
     try {
-      const result = await validateCodeMutation.mutateAsync({ code });
+      const result = await validateCodeMutation.mutateAsync(code);
       if (result.valid && result.examId === examId) {
         toast.success("تم التحقق من الكود بنجاح");
         navigate(`/exam/${examId}?code=${code}`);
@@ -57,7 +80,7 @@ export default function SubjectDetail() {
         toast.error("هذا الكود غير مخصص لهذا الاختبار");
       }
     } catch (error: any) {
-      toast.error(error.message || "الكود غير صحيح أو منتهي الصلاحية");
+      toast.error(error.response?.data?.error || "الكود غير صحيح أو منتهي الصلاحية");
     } finally {
       setIsValidating(false);
     }
@@ -97,12 +120,12 @@ export default function SubjectDetail() {
               </div>
 
               <div className="grid grid-cols-1 gap-6">
-                {exams.length === 0 ? (
+                {!exams || exams.length === 0 ? (
                   <Card className="bg-slate-900/50 border-dashed border-slate-700 p-12 text-center">
                     <p className="text-gray-500">لا توجد اختبارات متاحة لهذه المادة حالياً.</p>
                   </Card>
                 ) : (
-                  exams.map((exam) => (
+                  exams.map((exam: any) => (
                     <Card key={exam.id} className={`bg-slate-900 border ${exam.type === 'paid' ? 'border-pink-500/30 hover:border-pink-500' : 'border-slate-700 hover:border-blue-500'} p-6 transition-all group relative overflow-hidden`}>
                       <div className="flex flex-col md:flex-row justify-between gap-6">
                         <div className="flex-1">
@@ -196,10 +219,10 @@ export default function SubjectDetail() {
               </div>
               
               <div className="space-y-4">
-                {sections.length === 0 ? (
+                {!sections || sections.length === 0 ? (
                   <p className="text-gray-500 text-sm italic">لا توجد أقسام معرفة بعد.</p>
                 ) : (
-                  sections.sort((a, b) => (a.order || 0) - (b.order || 0)).map((section, idx) => (
+                  sections.sort((a: any, b: any) => (a.order || 0) - (b.order || 0)).map((section: any, idx: number) => (
                     <div key={section.id} className="flex items-center gap-4 group">
                       <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-blue-400 font-bold text-xs group-hover:bg-blue-600 group-hover:text-white transition-colors">
                         {idx + 1}
