@@ -58,7 +58,7 @@ export default function Home() {
                 </Button>
               </div>
             ) : (
-              <a href={getLoginUrl()}>
+              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer">
                 <Button className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-bold rounded-lg px-6">
                   دخول المنصة
                 </Button>
@@ -92,7 +92,7 @@ export default function Home() {
           
           {!isAuthenticated && (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a href={getLoginUrl()}>
+              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer">
                 <Button className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-lg px-10 py-7 rounded-2xl shadow-xl shadow-blue-600/20 transition-all hover:scale-105">
                   ابدأ رحلتك الآن
                 </Button>
