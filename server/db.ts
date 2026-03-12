@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { InsertUser, users, subjects, sections, questions, exams, examCodes, examResults, assessmentTexts } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -9,7 +10,8 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const client = postgres(process.env.DATABASE_URL);
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -33,7 +35,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     const values: InsertUser = {
       openId: user.openId,
     };
-    const updateSet: Record<string, unknown> = {};
+    const updateSet: Record<string, any> = {};
 
     const textFields = ["name", "email", "loginMethod"] as const;
     type TextField = (typeof textFields)[number];
@@ -68,7 +70,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    // PostgreSQL conflict handling
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -93,8 +97,7 @@ export async function getUserByOpenId(openId: string) {
 export async function createSubject(data: InsertSubject) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(subjects).values(data);
-  return result;
+  return db.insert(subjects).values(data).returning();
 }
 
 export async function getSubjectById(id: number) {
@@ -116,11 +119,17 @@ export async function getAllSubjects() {
   return db.select().from(subjects);
 }
 
+export async function deleteSubject(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(subjects).where(eq(subjects.id, id));
+}
+
 // Sections queries
 export async function createSection(data: InsertSection) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(sections).values(data);
+  return db.insert(sections).values(data).returning();
 }
 
 export async function getSectionsBySubject(subjectId: number) {
@@ -129,11 +138,17 @@ export async function getSectionsBySubject(subjectId: number) {
   return db.select().from(sections).where(eq(sections.subjectId, subjectId));
 }
 
+export async function deleteSection(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(sections).where(eq(sections.id, id));
+}
+
 // Questions queries
 export async function createQuestion(data: InsertQuestion) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(questions).values(data);
+  return db.insert(questions).values(data).returning();
 }
 
 export async function getQuestionsBySection(sectionId: number) {
@@ -142,11 +157,17 @@ export async function getQuestionsBySection(sectionId: number) {
   return db.select().from(questions).where(eq(questions.sectionId, sectionId));
 }
 
+export async function deleteQuestion(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(questions).where(eq(questions.id, id));
+}
+
 // Exams queries
 export async function createExam(data: InsertExam) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(exams).values(data);
+  return db.insert(exams).values(data).returning();
 }
 
 export async function getExamById(id: number) {
@@ -162,11 +183,17 @@ export async function getExamsBySubject(subjectId: number) {
   return db.select().from(exams).where(eq(exams.subjectId, subjectId));
 }
 
+export async function deleteExam(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(exams).where(eq(exams.id, id));
+}
+
 // Exam codes queries
 export async function createExamCode(data: InsertExamCode) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(examCodes).values(data);
+  return db.insert(examCodes).values(data).returning();
 }
 
 export async function getExamCodeByCode(code: string) {
@@ -186,7 +213,7 @@ export async function getExamCodesByExam(examId: number) {
 export async function createExamResult(data: InsertExamResult) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(examResults).values(data);
+  return db.insert(examResults).values(data).returning();
 }
 
 export async function getExamResultsByUser(userId: number) {
@@ -199,7 +226,7 @@ export async function getExamResultsByUser(userId: number) {
 export async function createAssessmentText(data: InsertAssessmentText) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  return db.insert(assessmentTexts).values(data);
+  return db.insert(assessmentTexts).values(data).returning();
 }
 
 export async function getAssessmentTextsByExam(examId: number) {
@@ -208,6 +235,5 @@ export async function getAssessmentTextsByExam(examId: number) {
   return db.select().from(assessmentTexts).where(eq(assessmentTexts.examId, examId));
 }
 
-// Import all types
-import type { InsertSubject, InsertSection, InsertQuestion, InsertExam, InsertExamCode, InsertExamResult, InsertAssessmentText } from "../drizzle/schema";
-import { subjects, sections, questions, exams, examCodes, examResults, assessmentTexts } from "../drizzle/schema";
+// Export schema types for other files
+export type { InsertSubject, InsertSection, InsertQuestion, InsertExam, InsertExamCode, InsertExamResult, InsertAssessmentText } from "../drizzle/schema";

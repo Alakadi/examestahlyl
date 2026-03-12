@@ -1,92 +1,232 @@
 import { useState, useEffect } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles, HelpCircle, ChevronRight, ChevronLeft } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { AIChatBox } from "@/components/AIChatBox";
+import { toast } from "sonner";
 
 export default function StudentExam() {
   const { id } = useParams<{ id: string }>();
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [, navigate] = useLocation();
+  const examId = parseInt(id || "0");
+
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showFeedback, setShowFeedback] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [startedAt] = useState(new Date());
+
+  const examQuery = trpc.exams.getById.useQuery({ id: examId });
+  const questionsQuery = trpc.exams.getQuestions.useQuery({ examId });
+  const submitMutation = trpc.results.submit.useMutation({
+    onSuccess: (data) => {
+      toast.success("تم تسليم الاختبار بنجاح");
+      navigate(`/results/${data[0].id}`);
+    },
+    onError: (error) => {
+      toast.error(`فشل تسليم الاختبار: ${error.message}`);
+    }
+  });
+
+  const questions = questionsQuery.data || [];
+  const currentQuestion = questions[currentQuestionIdx];
+  const isLastQuestion = currentQuestionIdx === questions.length - 1;
+
+  if (examQuery.isLoading || questionsQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (!examQuery.data || !questions) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+        <h2 className="text-2xl font-bold mb-4">الاختبار غير موجود</h2>
+        <Button onClick={() => navigate("/")}>العودة للرئيسية</Button>
+      </div>
+    );
+  }
+
+  const handleSelectOption = (optionId: string) => {
+    setAnswers(prev => ({ ...prev, [currentQuestion.id]: optionId }));
+    setShowFeedback(true);
+  };
+
+  const handleNext = () => {
+    if (isLastQuestion) {
+      const submissionAnswers = questions.map(q => ({
+        questionId: q.id,
+        selectedOptionId: answers[q.id] || "",
+      }));
+      submitMutation.mutate({
+        examId,
+        answers: submissionAnswers,
+        startedAt,
+      });
+    } else {
+      setCurrentQuestionIdx(prev => prev + 1);
+      setShowFeedback(false);
+    }
+  };
+
+  const progress = ((currentQuestionIdx + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-xl font-bold text-white">{examQuery.data.title}</h1>
+          <Button variant="outline" className="border-slate-700 text-gray-400" onClick={() => navigate("/")}>
+            إنهاء الاختبار
+          </Button>
+        </div>
+
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex justify-between text-sm text-gray-400 mb-2">
-            <span>السؤال 1 من 10</span>
-            <span>10%</span>
+            <span>السؤال {currentQuestionIdx + 1} من {questions.length}</span>
+            <span>{Math.round(progress)}%</span>
           </div>
           <div className="w-full bg-slate-800 rounded-full h-2">
-            <div className="bg-gradient-to-r from-blue-600 to-cyan-500 h-2 rounded-full" style={{ width: "10%" }}></div>
+            <div 
+              className="bg-gradient-to-r from-blue-600 to-cyan-500 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${progress}%` }}
+            ></div>
           </div>
         </div>
 
         {/* Question Card */}
-        <Card className="bg-slate-900 border border-slate-700 p-8 mb-6">
-          <h2 className="text-xl font-bold text-white mb-6">
-            ما هي عاصمة فرنسا؟
+        <Card className="bg-slate-900 border border-slate-700 p-6 md:p-10 mb-6 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-1 h-full bg-blue-500"></div>
+          
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-8 leading-relaxed text-right">
+            {currentQuestion.text}
           </h2>
 
           {/* Options */}
-          <div className="space-y-3 mb-8">
-            {["باريس", "لندن", "برلين", "مدريد"].map((option, idx) => (
-              <button
-                key={idx}
-                onClick={() => setSelectedAnswer(option)}
-                className={`w-full p-4 rounded-lg border-2 transition text-right ${
-                  selectedAnswer === option
-                    ? "border-blue-500 bg-blue-500/10"
-                    : "border-slate-700 bg-slate-800 hover:border-slate-600"
-                }`}
-              >
-                <span className="text-white">{option}</span>
-              </button>
-            ))}
+          <div className="space-y-4 mb-8">
+            {(currentQuestion.options as {id: string, text: string}[]).map((option) => {
+              const isSelected = answers[currentQuestion.id] === option.id;
+              const isCorrect = option.id === currentQuestion.correctOptionId;
+              
+              let variantClasses = "border-slate-700 bg-slate-800 hover:border-slate-600";
+              if (showFeedback) {
+                if (isCorrect) variantClasses = "border-green-500 bg-green-500/10";
+                else if (isSelected) variantClasses = "border-red-500 bg-red-500/10";
+              } else if (isSelected) {
+                variantClasses = "border-blue-500 bg-blue-500/10";
+              }
+
+              return (
+                <button
+                  key={option.id}
+                  disabled={showFeedback}
+                  onClick={() => handleSelectOption(option.id)}
+                  className={`w-full p-5 rounded-xl border-2 transition-all text-right flex items-center justify-between group ${variantClasses}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-8 h-8 rounded-full border flex items-center justify-center text-sm ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-600 text-gray-400 group-hover:border-slate-400'}`}>
+                      {option.id}
+                    </span>
+                    <span className="text-white font-medium">{option.text}</span>
+                  </div>
+                  {showFeedback && isCorrect && <span className="text-green-500">✓</span>}
+                  {showFeedback && isSelected && !isCorrect && <span className="text-red-500">✕</span>}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Feedback */}
+          {/* Feedback Section */}
           {showFeedback && (
-            <div className="bg-green-900/30 border border-green-700 rounded-lg p-4 mb-6">
-              <p className="text-green-400 font-semibold mb-2">✓ إجابة صحيحة</p>
-              <p className="text-gray-300 text-sm">هذا هو الشرح التوضيحي للإجابة الصحيحة.</p>
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8 animate-in fade-in slide-in-from-bottom-4">
+              <div className="flex items-start gap-4">
+                <div className={`p-2 rounded-lg ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                  <HelpCircle className={`w-5 h-5 ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'text-green-500' : 'text-red-500'}`} />
+                </div>
+                <div>
+                  <p className={`font-bold mb-2 ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'text-green-400' : 'text-red-400'}`}>
+                    {answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'إجابة صحيحة!' : 'إجابة خاطئة'}
+                  </p>
+                  <p className="text-gray-300 text-sm leading-relaxed">
+                    {currentQuestion.explanation || "لا يوجد شرح متوفر لهذا السؤال حالياً."}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="flex flex-col md:flex-row gap-4">
             <Button
-              onClick={() => setShowFeedback(true)}
-              disabled={!selectedAnswer}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleNext}
+              disabled={!answers[currentQuestion.id] || submitMutation.isPending}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white py-6 text-lg rounded-xl"
             >
-              تأكيد الإجابة
+              {submitMutation.isPending ? <Loader2 className="animate-spin" /> : (isLastQuestion ? "إنهاء وتسليم الاختبار" : "السؤال التالي")}
+              {!isLastQuestion && <ChevronLeft className="mr-2 w-5 h-5" />}
             </Button>
+            
             {showFeedback && (
-              <Button
-                onClick={() => setCurrentQuestion(currentQuestion + 1)}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white"
+              <Button 
+                variant="outline" 
+                onClick={() => setIsChatOpen(true)}
+                className="border-slate-700 text-gray-300 hover:bg-slate-800 py-6 rounded-xl flex items-center gap-2"
               >
-                السؤال التالي
+                <Sparkles className="w-5 h-5 text-cyan-400" />
+                اسأل الذكاء الاصطناعي
               </Button>
             )}
           </div>
         </Card>
 
-        {/* Help Buttons */}
-        {showFeedback && (
-          <div className="grid grid-cols-2 gap-4">
-            <Button variant="outline" className="border-slate-700 text-gray-300 hover:bg-slate-800">
-              اسأل الذكاء الاصطناعي
-            </Button>
-            <Button variant="outline" className="border-slate-700 text-gray-300 hover:bg-slate-800">
-              عرض الشرح
-            </Button>
+        {/* Info Grid */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl text-center">
+            <p className="text-gray-500 text-xs mb-1">المادة</p>
+            <p className="text-white text-sm font-medium">{examQuery.data.title}</p>
           </div>
-        )}
+          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl text-center">
+            <p className="text-gray-500 text-xs mb-1">الوقت المتبقي</p>
+            <p className="text-white text-sm font-medium">غير محدد</p>
+          </div>
+        </div>
       </div>
+
+      {/* AI Chat Drawer/Dialog */}
+      {isChatOpen && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl h-[80vh] rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-white font-bold">مساعد الذكاء الاصطناعي</h3>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setIsChatOpen(false)} className="text-gray-400 hover:text-white">✕</Button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AIChatBox 
+                chatId={`exam-${id}-q-${currentQuestion.id}`}
+                initialMessages={[
+                  {
+                    id: 'system-1',
+                    role: 'assistant',
+                    content: `مرحباً! أنا مساعدك الذكي. السؤال الحالي هو: "${currentQuestion.text}". كيف يمكنني مساعدتك في فهمه؟`,
+                    parts: [{ type: 'text', text: `مرحباً! أنا مساعدك الذكي. السؤال الحالي هو: "${currentQuestion.text}". كيف يمكنني مساعدتك في فهمه؟` }]
+                  }
+                ]}
+                placeholder="اسأل عن شرح السؤال أو الخيارات..."
+                className="h-full"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -42,24 +42,9 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .query(({ input }) => db.getSubjectById(input.id)),
 
-    getByCreator: protectedProcedure
-      .input(z.object({ createdBy: z.number() }))
-      .query(({ input }) => db.getSubjectsByCreator(input.createdBy)),
-
-    update: adminProcedure
-      .input(z.object({
-        id: z.number(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        icon: z.string().optional(),
-        color: z.string().optional(),
-      }))
-      .mutation(async ({ input }) => {
-        const subject = await db.getSubjectById(input.id);
-        if (!subject) throw new TRPCError({ code: "NOT_FOUND" });
-        // Update logic would go here
-        return subject;
-      }),
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteSubject(input.id)),
   }),
 
   // Sections
@@ -76,6 +61,10 @@ export const appRouter = router({
     getBySubject: publicProcedure
       .input(z.object({ subjectId: z.number() }))
       .query(({ input }) => db.getSectionsBySubject(input.subjectId)),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteSection(input.id)),
   }),
 
   // Questions
@@ -95,6 +84,10 @@ export const appRouter = router({
     getBySection: publicProcedure
       .input(z.object({ sectionId: z.number() }))
       .query(({ input }) => db.getQuestionsBySection(input.sectionId)),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteQuestion(input.id)),
 
     bulkImport: adminProcedure
       .input(z.object({
@@ -141,11 +134,15 @@ export const appRouter = router({
 
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
-      .query(({ input }) => db.getExamById(input.id)),
+      .query(({ input }) => db.getSubjectById(input.id)),
 
     getBySubject: publicProcedure
       .input(z.object({ subjectId: z.number() }))
       .query(({ input }) => db.getExamsBySubject(input.subjectId)),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteExam(input.id)),
 
     getQuestions: publicProcedure
       .input(z.object({ examId: z.number() }))
@@ -201,7 +198,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "تم استنفاد عدد استخدامات الكود" });
         }
 
-        return { examId: examCode.examId, valid: true };
+        return { examId: examCode.examId, valid: true, id: examCode.id };
       }),
 
     getByExam: adminProcedure
@@ -227,27 +224,46 @@ export const appRouter = router({
 
         // Calculate scores
         let totalCorrect = 0;
-        const sectionScores: { sectionId: number; score: number; percentage: number }[] = [];
-        const processedAnswers: { questionId: number; selectedOptionId: string; isCorrect: boolean }[] = [];
+        const processedAnswers: { questionId: number; selectedOptionId: string; isCorrect: boolean; sectionId: number }[] = [];
+        const sectionStats: Record<number, { correct: number; total: number }> = {};
 
-        for (const answer of input.answers) {
-          // Fetch question to check correctness
-          // This is a simplified version - in production you'd need proper question lookup
-          const isCorrect = true; // Placeholder
-          processedAnswers.push({
-            ...answer,
-            isCorrect,
-          });
-          if (isCorrect) totalCorrect++;
+        const sections = exam.sectionDistribution as { sectionId: number; count: number }[];
+        for (const dist of sections) {
+          const sectionQuestions = await db.getQuestionsBySection(dist.sectionId);
+          const questionMap = new Map(sectionQuestions.map(q => [q.id, q]));
+          
+          sectionStats[dist.sectionId] = { correct: 0, total: 0 };
+
+          for (const answer of input.answers) {
+            const question = questionMap.get(answer.questionId);
+            if (question) {
+              const isCorrect = question.correctOptionId === answer.selectedOptionId;
+              processedAnswers.push({
+                ...answer,
+                isCorrect,
+                sectionId: dist.sectionId
+              });
+              sectionStats[dist.sectionId].total++;
+              if (isCorrect) {
+                totalCorrect++;
+                sectionStats[dist.sectionId].correct++;
+              }
+            }
+          }
         }
 
-        const totalScore = (totalCorrect / input.answers.length) * 100;
+        const totalScore = input.answers.length > 0 ? (totalCorrect / input.answers.length) * 100 : 0;
+        const sectionScores = Object.entries(sectionStats).map(([sectionId, stats]) => ({
+          sectionId: parseInt(sectionId),
+          score: stats.correct,
+          percentage: stats.total > 0 ? (stats.correct / stats.total) * 100 : 0
+        }));
 
         const result = await db.createExamResult({
           examId: input.examId,
           userId: ctx.user.id,
           examCodeId: input.examCodeId,
-          totalScore: totalScore as any,
+          totalScore: totalScore.toFixed(2) as any,
           sectionScores: sectionScores as any,
           answers: processedAnswers as any,
           startedAt: input.startedAt,

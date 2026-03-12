@@ -2,9 +2,9 @@ import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SubjectsManager from "@/components/admin/SubjectsManager";
-import QuestionsManager from "@/components/admin/QuestionsManager";
-import ExamsManager from "@/components/admin/ExamsManager";
-import CodesManager from "@/components/admin/CodesManager";
+import SectionsQuestionsManager from "@/components/admin/SectionsQuestionsManager";
+import AdvancedExamsManager from "@/components/admin/AdvancedExamsManager";
+import AdvancedCodesManager from "@/components/admin/AdvancedCodesManager";
 import AssessmentManager from "@/components/admin/AssessmentManager";
 
 export default function AdminDashboard() {
@@ -42,15 +42,15 @@ export default function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <QuestionsManager />
+            <SectionsQuestionsManager />
           </TabsContent>
 
           <TabsContent value="exams" className="mt-6">
-            <ExamsManager />
+            <AdvancedExamsManager />
           </TabsContent>
 
           <TabsContent value="codes" className="mt-6">
-            <CodesManager />
+            <AdvancedCodesManager />
           </TabsContent>
 
           <TabsContent value="assessment" className="mt-6">

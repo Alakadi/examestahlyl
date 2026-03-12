@@ -2,51 +2,6 @@
  * AIChatBox Component
  *
  * A production-ready chat component built on AI SDK v6's useChat hook.
- *
- * ## Architecture
- *
- * This component follows a "controlled by React Query" pattern:
- * - Messages are loaded from your data layer (e.g., tRPC/React Query)
- * - Passed to this component as `initialMessages`
- * - On chat completion, `onFinish` callback lets you update your cache
- * - Chat switching is handled via `setMessages` when props change
- *
- * ## Usage
- *
- * ```tsx
- * // In your page component
- * const messagesQuery = trpc.chat.loadMessages.useQuery({ chatId });
- * const trpcUtils = trpc.useUtils();
- *
- * <AIChatBox
- *   chatId={chatId}
- *   initialMessages={messagesQuery.data ?? []}
- *   onFinish={(messages) => {
- *     // Update React Query cache with final messages
- *     trpcUtils.chat.loadMessages.setData({ chatId }, messages);
- *   }}
- * />
- * ```
- *
- * ## Tool Rendering
- *
- * Customize how tool invocations appear in the chat:
- *
- * ```tsx
- * <AIChatBox
- *   renderToolPart={(part) => {
- *     // part.type is `tool-${toolName}` (e.g., "tool-searchPokemon")
- *     // part.state is the tool invocation state
- *     // part.input/output contain the tool data
- *     if (part.type === "tool-searchPokemon") {
- *       return <PokemonResults data={part.output} />;
- *     }
- *     return null; // Use default renderer
- *   }}
- * />
- * ```
- *
- * @see https://sdk.vercel.ai/docs/ai-sdk-ui/chatbot - AI SDK Chat Documentation
  */
 
 import { Button } from "@/components/ui/button";
@@ -57,13 +12,6 @@ import { cn } from "@/lib/utils";
 import { Loader2, Send, Sparkles } from "lucide-react";
 import { useState, useRef, useEffect, ReactNode } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-
-// ============================================================================
-// TYPES
-// Note: For AI SDK types like UIMessage, UIMessagePart, ChatStatus,
-// import them directly from "ai" package in your consuming code.
-// ============================================================================
 
 import type { UIMessage, UIMessagePart, UIToolInvocation } from "ai";
 
@@ -299,26 +247,6 @@ function MessageBubble({
 }
 
 // ============================================================================
-// THINKING INDICATOR
-// ============================================================================
-
-function ThinkingIndicator() {
-  return (
-    <div className="flex gap-3 justify-start items-start">
-      <div className="size-8 shrink-0 mt-1 rounded-full bg-primary/10 flex items-center justify-center">
-        <Sparkles className="size-4 text-primary" />
-      </div>
-      <div className="bg-muted rounded-lg px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" />
-          <span className="text-sm text-muted-foreground">Thinking...</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -328,209 +256,146 @@ export function AIChatBox({
   userId,
   initialMessages,
   onFinish,
-  renderToolPart = () => null, // Default returns null to use DefaultToolPartRenderer
-  placeholder = "Type your message...",
+  renderToolPart = () => null,
+  placeholder = "Type a message...",
   className,
-  emptyStateMessage = "Start a conversation with AI",
-  suggestedPrompts,
+  emptyStateMessage = "How can I help you today?",
+  suggestedPrompts = [],
 }: AIChatBoxProps) {
-  const [input, setInput] = useState("");
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [inputValue, setInputValue] = useState("");
 
-  // -------------------------------------------------------------------------
-  // useChat hook - the core of AI SDK integration
-  // -------------------------------------------------------------------------
-  const { messages, sendMessage, setMessages, status, error } = useChat({
-    // Chat ID helps AI SDK track different conversations
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading,
+    status,
+    setMessages,
+    append,
+  } = useChat({
+    api,
     id: chatId,
-
-    // Initial messages from your data layer (React Query, etc.)
-    // Note: This makes it "controlled" - we sync via setMessages on changes
-    messages: initialMessages,
-
-    // Transport configuration - how messages are sent to the server
-    transport: new DefaultChatTransport({
-      api,
-      // Customize the request body sent to your server
-      prepareSendMessagesRequest({ messages, id }) {
-        // Send only the latest message + metadata
-        // Server should load full history from DB using chatId
-        return {
-          body: {
-            message: messages[messages.length - 1],
-            chatId: chatId || id,
-            userId,
-          },
-        };
-      },
-    }),
-
-    // Called when streaming completes
-    onFinish: ({ messages: finalMessages, isError, isAbort, isDisconnect }) => {
-      if (!isError && !isAbort && !isDisconnect) {
-        // Notify parent to update cache/persist
-        onFinish?.(finalMessages);
+    initialMessages,
+    onFinish: (message, options) => {
+      // In AI SDK v6, onFinish receives the last message
+      // We can trigger the callback with the full message list
+      if (onFinish) {
+        // Use a timeout to ensure state is updated
+        setTimeout(() => {
+          onFinish([...messages, message]);
+        }, 0);
       }
+    },
+    body: {
+      userId,
     },
   });
 
-  // -------------------------------------------------------------------------
-  // Sync messages when chatId or initialMessages change (chat switching)
-  // -------------------------------------------------------------------------
+  // Sync messages when chatId changes
   useEffect(() => {
     setMessages(initialMessages);
   }, [chatId, initialMessages, setMessages]);
 
-  // -------------------------------------------------------------------------
-  // Derived state
-  // -------------------------------------------------------------------------
-  const canSend = status === "ready";
-  const isStreaming = status === "streaming";
-  const lastMessage = messages[messages.length - 1];
-  const isWaitingForContent =
-    status === "submitted" ||
-    (isStreaming && lastMessage?.role === "assistant" && lastMessage?.parts.length === 0);
-
-  // -------------------------------------------------------------------------
-  // Auto-scroll on new messages
-  // -------------------------------------------------------------------------
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector(
-      "[data-radix-scroll-area-viewport]"
-    ) as HTMLDivElement;
-    if (viewport) {
-      requestAnimationFrame(() => {
-        viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
-      });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, status]);
-
-  // -------------------------------------------------------------------------
-  // Message submission
-  // -------------------------------------------------------------------------
-  const submitMessage = () => {
-    const trimmedInput = input.trim();
-    if (!trimmedInput || !canSend) return;
-
-    // AI SDK v6 sendMessage accepts { text, files? }
-    sendMessage({ text: trimmedInput });
-    setInput("");
-    textareaRef.current?.focus();
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    submitMessage();
-  };
+  }, [messages, isLoading]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      submitMessage();
+      if (input.trim() || isLoading) return;
+      handleSubmit(e as any);
     }
   };
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
   return (
-    <div className={cn("flex flex-col flex-1 min-h-0", className)}>
-      {/* Messages Area */}
-      <div ref={scrollAreaRef} className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
-          <div className="mx-auto max-w-3xl space-y-4 p-4">
-            {/* Empty state */}
-            {messages.length === 0 && !isWaitingForContent ? (
-              <div className="flex h-[60vh] flex-col items-center justify-center gap-6 text-muted-foreground">
-                <Sparkles className="size-12 opacity-20" />
-                <p className="text-center max-w-md">{emptyStateMessage}</p>
-                {suggestedPrompts && suggestedPrompts.length > 0 && (
-                  <div className="flex flex-wrap justify-center gap-2 max-w-lg">
-                    {suggestedPrompts.map((prompt, i) => (
-                      <Button
-                        key={i}
-                        variant="outline"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => {
-                          setInput(prompt);
-                          textareaRef.current?.focus();
-                        }}
-                      >
-                        {prompt}
-                      </Button>
-                    ))}
-                  </div>
-                )}
+    <div className={cn("flex flex-col h-full w-full bg-background", className)}>
+      <ScrollArea ref={scrollRef} className="flex-1 p-4">
+        <div className="flex flex-col gap-6 max-w-3xl mx-auto py-4">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in slide-in-from-bottom-4">
+              <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                <Sparkles className="size-6 text-primary" />
               </div>
-            ) : (
-              <>
-                {/* Message list */}
-                {messages.map((message, index) => {
-                  const isLastAssistant =
-                    index === messages.length - 1 && message.role === "assistant";
-                  const hasContent = message.parts.length > 0;
-
-                  // Skip empty assistant messages (thinking indicator shows instead)
-                  if (isLastAssistant && !hasContent) return null;
-
-                  return (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      renderToolPart={renderToolPart}
-                      isStreaming={isStreaming && isLastAssistant && hasContent}
-                    />
-                  );
-                })}
-
-                {/* Thinking indicator */}
-                {isWaitingForContent && <ThinkingIndicator />}
-              </>
-            )}
-
-            {/* Error display */}
-            {error && (
-              <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
-                Error: {error.message}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </div>
-
-      {/* Input Area */}
-      <form onSubmit={handleSubmit} className="border-t bg-background/50 p-4">
-        <div className="mx-auto max-w-3xl">
-          <div className="flex gap-2">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              className="min-h-[44px] max-h-32 resize-none"
-              rows={1}
-              disabled={!canSend}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!canSend || !input.trim()}
-              className="shrink-0 h-[44px] w-[44px]"
-            >
-              {status === "submitted" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
+              <h3 className="text-lg font-semibold">{emptyStateMessage}</h3>
+              {suggestedPrompts.length > 0 && (
+                <div className="flex flex-wrap gap-2 justify-center mt-6">
+                  {suggestedPrompts.map((prompt, i) => (
+                    <Button
+                      key={i}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs rounded-full"
+                      onClick={() => append({ role: "user", content: prompt })}
+                    >
+                      {prompt}
+                    </Button>
+                  ))}
+                </div>
               )}
-            </Button>
-          </div>
+            </div>
+          )}
+
+          {messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              renderToolPart={renderToolPart}
+              isStreaming={isLoading && m === messages[messages.length - 1]}
+            />
+          ))}
+
+          {isLoading && status === "submitted" && (
+            <div className="flex gap-3 justify-start items-start">
+              <div className="size-8 shrink-0 mt-1 rounded-full bg-primary/10 flex items-center justify-center">
+                <Sparkles className="size-4 text-primary" />
+              </div>
+              <div className="bg-muted rounded-lg px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  <span className="text-sm text-muted-foreground">Thinking...</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </form>
+      </ScrollArea>
+
+      <div className="p-4 border-t bg-background/50 backdrop-blur-sm">
+        <form
+          onSubmit={handleSubmit}
+          className="relative max-w-3xl mx-auto flex items-end gap-2"
+        >
+          <Textarea
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="min-h-[52px] max-h-32 pr-12 py-3 resize-none bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary"
+            rows={1}
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || isLoading}
+            className="absolute right-2 bottom-2 size-9 rounded-lg transition-all"
+          >
+            {isLoading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Send className="size-4" />
+            )}
+          </Button>
+        </form>
+        <p className="text-[10px] text-center text-muted-foreground mt-2">
+          AI can make mistakes. Check important info.
+        </p>
+      </div>
     </div>
   );
 }
-
-export default AIChatBox;
