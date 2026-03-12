@@ -23,17 +23,27 @@ export function useAuth() {
       try {
         const response = await authAPI.getMe();
         const userData = response.data;
-        if (userData) {
+        if (userData && typeof userData === "object" && userData.id) {
+          sessionStorage.removeItem("dev_login_redirected");
           setUser(userData);
           setIsAuthenticated(true);
         } else {
           setUser(null);
           setIsAuthenticated(false);
+          // في بيئة التطوير، سجّل الدخول تلقائياً (مرة واحدة فقط)
+          if (import.meta.env.MODE === "development" && !sessionStorage.getItem("dev_login_redirected")) {
+            sessionStorage.setItem("dev_login_redirected", "1");
+            window.location.href = "/api/dev/login";
+          }
         }
       } catch (error) {
         console.error("Failed to fetch user:", error);
         setUser(null);
         setIsAuthenticated(false);
+        if (import.meta.env.MODE === "development" && !sessionStorage.getItem("dev_login_redirected")) {
+          sessionStorage.setItem("dev_login_redirected", "1");
+          window.location.href = "/api/dev/login";
+        }
       } finally {
         setLoading(false);
       }
@@ -45,11 +55,12 @@ export function useAuth() {
   const logout = async () => {
     try {
       await authAPI.logout();
-      setUser(null);
-      setIsAuthenticated(false);
-      window.location.href = "/api/dev/login";
     } catch (error) {
       console.error("Logout failed:", error);
+    } finally {
+      setUser(null);
+      setIsAuthenticated(false);
+      window.location.href = "/";
     }
   };
 

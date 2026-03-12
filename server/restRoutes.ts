@@ -3,6 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
 import * as db from "./db";
 import { z } from "zod";
+import { COOKIE_NAME } from "@shared/const";
+import { getSessionCookieOptions } from "./_core/cookies";
 
 // Helper function to handle async route handlers
 const asyncHandler = (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -39,6 +41,8 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.post("/api/auth/logout", asyncHandler(async (req, res) => {
+    const cookieOptions = getSessionCookieOptions(req);
+    res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: 0 });
     res.json({ success: true });
   }));
 

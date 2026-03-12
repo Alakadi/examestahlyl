@@ -13,13 +13,7 @@ const api: AxiosInstance = axios.create({
 // Request interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Redirect to login
-      window.location.href = "/api/dev/login";
-    }
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // ============ AUTH API ============
