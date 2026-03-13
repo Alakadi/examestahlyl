@@ -12,12 +12,15 @@ function getQueryParam(req: Request, key: string): string | undefined {
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/dev/login", async (req: Request, res: Response) => {
     try {
+      const role = req.query.role === "admin" ? "admin" : "user";
+      const isStudent = role === "user";
+      
       const userInfo = {
-        openId: "dev-admin-id",
-        name: "Admin User",
-        email: "admin@example.com",
+        openId: isStudent ? "dev-student-id" : "dev-admin-id",
+        name: isStudent ? "Student User" : "Admin User",
+        email: isStudent ? "student@example.com" : "admin@example.com",
         loginMethod: "local",
-        role: "admin" as const,
+        role: role as "admin" | "user",
       };
       
       await db.upsertUser({

@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router, adminProcedure } from "./_core/trpc";
+import { sdk } from "./_core/sdk";
 import { z } from "zod";
 import * as db from "./db";
 import { TRPCError } from "@trpc/server";
@@ -11,6 +12,69 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    
+    register: publicProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        password: z.string().min(6),
+        phone: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const existingUser = await db.getUserByEmail(input.email);
+        if (existingUser) {
+          throw new TRPCError({ code: "CONFLICT", message: "البريد الإلكتروني مسجل مسبقاً" });
+        }
+
+        const [newUser] = await db.createUser({
+          ...input,
+          role: "user",
+          loginMethod: "local",
+        });
+
+        // Create session
+        const sessionToken = await sdk.createSessionToken(input.email, { name: input.name });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        return newUser;
+      }),
+
+    login: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string(),
+        expectedRole: z.enum(["user", "admin"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await db.getUserByEmail(input.email);
+        if (!user || user.password !== input.password) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "البريد الإلكتروني أو كلمة المرور غير صحيحة" });
+        }
+
+        if (user.role !== input.expectedRole) {
+          throw new TRPCError({ 
+            code: "FORBIDDEN", 
+            message: input.expectedRole === "admin" 
+              ? "هذا الحساب ليس لديه صلاحيات مسؤول" 
+              : "هذا الحساب خاص بالمسؤولين، يرجى الدخول من بوابة المسؤول" 
+          });
+        }
+
+        // Update last signed in
+        await db.upsertUser({ 
+          email: user.email, 
+          lastSignedIn: new Date() 
+        });
+
+        // Create session
+        const sessionToken = await sdk.createSessionToken(user.email, { name: user.name || "" });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+        return user;
+      }),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -45,6 +109,10 @@ export const appRouter = router({
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ input }) => db.deleteSubject(input.id)),
+
+    getQuestionCount: adminProcedure
+      .input(z.object({ subjectId: z.number() }))
+      .query(({ input }) => db.getQuestionCountBySubject(input.subjectId)),
   }),
 
   // Sections
@@ -88,6 +156,21 @@ export const appRouter = router({
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ input }) => db.deleteQuestion(input.id)),
+
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        text: z.string().optional(),
+        options: z.array(z.object({ id: z.string(), text: z.string() })).optional(),
+        correctOptionId: z.string().optional(),
+        explanation: z.string().optional(),
+        explanationLink: z.string().optional(),
+        aiPrompt: z.string().optional(),
+      }))
+      .mutation(({ input }) => {
+        const { id, ...data } = input;
+        return db.updateQuestion(id, data);
+      }),
 
     bulkImport: adminProcedure
       .input(z.object({
@@ -134,11 +217,13 @@ export const appRouter = router({
 
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
-      .query(({ input }) => db.getSubjectById(input.id)),
+      .query(({ input }) => db.getExamById(input.id)),
 
     getBySubject: publicProcedure
       .input(z.object({ subjectId: z.number() }))
       .query(({ input }) => db.getExamsBySubject(input.subjectId)),
+
+    getAll: publicProcedure.query(() => db.getAllExams()),
 
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
@@ -150,16 +235,39 @@ export const appRouter = router({
         const exam = await db.getExamById(input.examId);
         if (!exam) throw new TRPCError({ code: "NOT_FOUND" });
         
-        const distribution = exam.sectionDistribution as { sectionId: number; count: number }[];
+        let distribution = (exam.sectionDistribution as { sectionId: number; count?: number; percentage?: number }[]) || [];
         const allQuestions: any[] = [];
 
+        // If no distribution is defined, auto-distribute equally
+        if (distribution.length === 0) {
+          const sections = await db.getSectionsBySubject(exam.subjectId);
+          if (sections.length > 0) {
+            const countPerSection = Math.ceil(exam.totalQuestions / sections.length);
+            distribution = sections.map(s => ({ sectionId: s.id, count: countPerSection }));
+          }
+        } else {
+            // Handle percentage-based distribution
+            distribution = distribution.map(d => {
+                if (d.percentage !== undefined) {
+                    return { ...d, count: Math.ceil(exam.totalQuestions * (d.percentage / 100)) };
+                }
+                return d;
+            });
+        }
+
         for (const dist of distribution) {
-          const questions = await db.getQuestionsBySection(dist.sectionId);
-          const shuffled = questions.sort(() => Math.random() - 0.5).slice(0, dist.count);
+          const sectionQuestions = await db.getQuestionsBySection(dist.sectionId);
+          // Shuffle then take the required count
+          const shuffled = sectionQuestions.sort(() => Math.random() - 0.5).slice(0, dist.count || 1);
           allQuestions.push(...shuffled);
         }
 
-        return allQuestions.sort(() => Math.random() - 0.5);
+        // Final shuffle and trim to match EXACTLY totalQuestions
+        // We shuffle the combined list to ensure that if we have "extra" questions due to rounding, 
+        // they are trimmed randomly but we still hit the target count.
+        return allQuestions
+            .sort(() => Math.random() - 0.5)
+            .slice(0, exam.totalQuestions);
       }),
   }),
 
@@ -180,9 +288,32 @@ export const appRouter = router({
         });
       }),
 
+    generate: adminProcedure
+      .input(z.object({
+        examId: z.number(),
+        quantity: z.number().min(1).max(100),
+        maxUses: z.number().optional(),
+        expiresAt: z.date().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const results = [];
+        for (let i = 0; i < input.quantity; i++) {
+          const code = nanoid(10).toUpperCase();
+          const result = await db.createExamCode({
+            examId: input.examId,
+            code,
+            maxUses: input.maxUses || 1,
+            expiresAt: input.expiresAt,
+            isActive: true,
+          });
+          results.push(result);
+        }
+        return results;
+      }),
+
     validate: publicProcedure
       .input(z.object({ code: z.string() }))
-      .query(async ({ input }) => {
+      .mutation(async ({ input }) => {
         const examCode = await db.getExamCodeByCode(input.code);
         if (!examCode) throw new TRPCError({ code: "NOT_FOUND", message: "الكود غير صحيح" });
         
@@ -204,6 +335,21 @@ export const appRouter = router({
     getByExam: adminProcedure
       .input(z.object({ examId: z.number() }))
       .query(({ input }) => db.getExamCodesByExam(input.examId)),
+
+    use: publicProcedure
+      .input(z.object({ code: z.string() }))
+      .mutation(async ({ input }) => {
+        const examCode = await db.getExamCodeByCode(input.code);
+        if (!examCode) throw new TRPCError({ code: "NOT_FOUND" });
+        
+        return db.updateExamCode(examCode.id, {
+          currentUses: (examCode.currentUses || 0) + 1,
+        });
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteExamCode(input.id)),
   }),
 
   // Exam Results

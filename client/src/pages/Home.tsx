@@ -41,14 +41,6 @@ export default function Home() {
                   <p className="text-white text-sm font-bold">{user?.name}</p>
                   <p className="text-gray-500 text-[10px] uppercase tracking-wider">{user?.role === 'admin' ? 'مسؤول النظام' : 'طالب'}</p>
                 </div>
-                {user?.role === "admin" && (
-                  <Button
-                    onClick={() => navigate("/admin")}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 h-9 rounded-lg"
-                  >
-                    لوحة التحكم
-                  </Button>
-                )}
                 <Button
                   onClick={() => logout()}
                   variant="ghost"
@@ -58,7 +50,7 @@ export default function Home() {
                 </Button>
               </div>
             ) : (
-              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer">
+              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer" onClick={() => sessionStorage.removeItem("manual_logout")}>
                 <Button className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-bold rounded-lg px-6">
                   دخول المنصة
                 </Button>
@@ -71,8 +63,8 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-20 pb-32">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none opacity-20">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-600 rounded-full blur-[120px]"></div>
+          <div className="absolute top-0 left-0 w-full h-full bg-linear-to-br from-blue-600/10 to-indigo-600/10 blur-3xl -z-10" />
+          <div className="absolute bottom-0 right-0 w-full h-full bg-linear-to-br from-cyan-600/10 to-blue-600/10 blur-3xl -z-10" />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 relative z-10 text-center">
@@ -82,8 +74,7 @@ export default function Home() {
           </div>
           
           <h2 className="text-5xl md:text-7xl font-black text-white mb-6 leading-tight tracking-tight">
-            ارتقِ بمستواك <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">بذكاء وإتقان</span>
+            ارتقِ بمستواك <br /> أهلاً بك في منصة <span className="bg-clip-text text-transparent bg-linear-to-r from-blue-400 to-cyan-400">EXAM LEVEL</span>
           </h2>
           
           <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed">
@@ -92,11 +83,17 @@ export default function Home() {
           
           {!isAuthenticated && (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer">
+              <a href={getLoginUrl()} target="_self" rel="noopener noreferrer" onClick={() => sessionStorage.removeItem("manual_logout")}>
                 <Button className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white text-lg px-10 py-7 rounded-2xl shadow-xl shadow-blue-600/20 transition-all hover:scale-105">
                   ابدأ رحلتك الآن
                 </Button>
               </a>
+              <Button 
+                onClick={() => navigate("/dev-login")}
+                className="px-8 py-7 rounded-2xl bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-lg shadow-xl shadow-blue-500/20 transition-all hover:scale-105 active:scale-95"
+              >
+                Dev Login
+              </Button>
               <Button variant="ghost" className="text-gray-400 hover:text-white text-lg px-8 py-7">
                 استكشف المميزات
               </Button>

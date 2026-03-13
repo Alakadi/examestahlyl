@@ -41,6 +41,8 @@ export default function SubjectDetail() {
     );
   }
 
+  const useCodeMutation = trpc.examCodes.use.useMutation();
+
   const handleValidateCode = async (examId: number) => {
     if (!code.trim()) {
       toast.error("يرجى إدخال الكود أولاً");
@@ -51,6 +53,8 @@ export default function SubjectDetail() {
     try {
       const result = await validateCodeMutation.mutateAsync({ code });
       if (result.valid && result.examId === examId) {
+        // Mark the code as used
+        await useCodeMutation.mutateAsync({ code });
         toast.success("تم التحقق من الكود بنجاح");
         navigate(`/exam/${examId}?code=${code}`);
       } else {

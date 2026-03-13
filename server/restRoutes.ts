@@ -5,19 +5,26 @@ import * as db from "./db";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { sdk } from "./_core/sdk";
 
 // Helper function to handle async route handlers
-const asyncHandler = (fn: (req: Request, res: Response) => Promise<void>) =>
+const asyncHandler = (fn: (req: Request, res: Response) => Promise<any>) =>
   (req: Request, res: Response, next: any) => {
     Promise.resolve(fn(req, res)).catch(next);
   };
 
-// Helper to get user from request (from context)
-const getUser = (req: any) => req.ctx?.user;
+// Helper to get user from request using SDK directly
+const getUserFromRequest = async (req: Request) => {
+  try {
+    return await sdk.authenticateRequest(req);
+  } catch {
+    return null;
+  }
+};
 
 // Helper to check if user is admin
-const requireAdmin = (req: any) => {
-  const user = getUser(req);
+const requireAdmin = async (req: Request) => {
+  const user = await getUserFromRequest(req);
   if (!user || user.role !== "admin") {
     throw new Error("Unauthorized: Admin access required");
   }
@@ -25,8 +32,8 @@ const requireAdmin = (req: any) => {
 };
 
 // Helper to check if user is authenticated
-const requireAuth = (req: any) => {
-  const user = getUser(req);
+const requireAuth = async (req: Request) => {
+  const user = await getUserFromRequest(req);
   if (!user) {
     throw new Error("Unauthorized: Authentication required");
   }
@@ -36,7 +43,7 @@ const requireAuth = (req: any) => {
 export function registerRestRoutes(app: Express) {
   // ============ AUTH ROUTES ============
   app.get("/api/auth/me", asyncHandler(async (req, res) => {
-    const user = getUser(req);
+    const user = await getUserFromRequest(req);
     res.json(user || null);
   }));
 
@@ -48,15 +55,14 @@ export function registerRestRoutes(app: Express) {
 
   // ============ SUBJECTS ROUTES ============
   app.post("/api/subjects", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    const admin = await requireAdmin(req);
     const { title, description, icon, color } = req.body;
-    const user = getUser(req);
     const result = await db.createSubject({
       title,
       description,
       icon,
       color,
-      createdBy: user.id,
+      createdBy: admin.id,
     });
     res.json(result[0]);
   }));
@@ -75,14 +81,14 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.delete("/api/subjects/:id", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     await db.deleteSubject(parseInt(req.params.id));
     res.json({ success: true });
   }));
 
   // ============ SECTIONS ROUTES ============
   app.post("/api/sections", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const { subjectId, title, description, order } = req.body;
     const result = await db.createSection({
       subjectId,
@@ -99,14 +105,14 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.delete("/api/sections/:id", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     await db.deleteSection(parseInt(req.params.id));
     res.json({ success: true });
   }));
 
   // ============ QUESTIONS ROUTES ============
   app.post("/api/questions", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const { sectionId, text, options, correctOptionId, explanation, explanationLink, aiPrompt } = req.body;
     const result = await db.createQuestion({
       sectionId,
@@ -126,13 +132,13 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.delete("/api/questions/:id", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     await db.deleteQuestion(parseInt(req.params.id));
     res.json({ success: true });
   }));
 
   app.post("/api/questions/bulk-import", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const { sectionId, questions } = req.body;
     const results = [];
     for (const q of questions) {
@@ -147,9 +153,8 @@ export function registerRestRoutes(app: Express) {
 
   // ============ EXAMS ROUTES ============
   app.post("/api/exams", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    const admin = await requireAdmin(req);
     const { subjectId, title, description, type, totalQuestions, sectionDistribution, timeLimit, passingScore } = req.body;
-    const user = getUser(req);
     const result = await db.createExam({
       subjectId,
       title,
@@ -159,7 +164,7 @@ export function registerRestRoutes(app: Express) {
       sectionDistribution,
       timeLimit,
       passingScore,
-      createdBy: user.id,
+      createdBy: admin.id,
     });
     res.json(result[0]);
   }));
@@ -178,7 +183,7 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.delete("/api/exams/:id", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     await db.deleteExam(parseInt(req.params.id));
     res.json({ success: true });
   }));
@@ -203,7 +208,7 @@ export function registerRestRoutes(app: Express) {
 
   // ============ EXAM CODES ROUTES ============
   app.post("/api/exam-codes", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const { examId, maxUses, expiresAt } = req.body;
     const code = nanoid(10).toUpperCase();
     const result = await db.createExamCode({
@@ -238,14 +243,14 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.get("/api/exam-codes/exam/:examId", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const codes = await db.getExamCodesByExam(parseInt(req.params.examId));
     res.json(codes);
   }));
 
   // ============ RESULTS ROUTES ============
   app.post("/api/results/submit", asyncHandler(async (req, res) => {
-    const user = requireAuth(req);
+    const userResult = await requireAuth(req);
     const { examId, answers, examCodeId, startedAt } = req.body;
 
     const exam = await db.getExamById(examId);
@@ -291,7 +296,7 @@ export function registerRestRoutes(app: Express) {
 
     const result = await db.createExamResult({
       examId,
-      userId: user.id,
+      userId: userResult.id,
       examCodeId,
       totalScore: totalScore.toFixed(2) as any,
       sectionScores: sectionScores as any,
@@ -304,14 +309,14 @@ export function registerRestRoutes(app: Express) {
   }));
 
   app.get("/api/results/user", asyncHandler(async (req, res) => {
-    const user = requireAuth(req);
-    const results = await db.getExamResultsByUser(user.id);
+    const userResult = await requireAuth(req);
+    const results = await db.getExamResultsByUser(userResult.id);
     res.json(results);
   }));
 
   app.get("/api/results/:id", asyncHandler(async (req, res) => {
-    const user = requireAuth(req);
-    const results = await db.getExamResultsByUser(user.id);
+    const userResult = await requireAuth(req);
+    const results = await db.getExamResultsByUser(userResult.id);
     const result = results.find(r => r.id === parseInt(req.params.id));
     if (!result) {
       return res.status(404).json({ error: "Result not found" });
@@ -321,7 +326,7 @@ export function registerRestRoutes(app: Express) {
 
   // ============ ASSESSMENT TEXTS ROUTES ============
   app.post("/api/assessment-texts", asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    await requireAdmin(req);
     const { examId, minScore, maxScore, text, sectionConditions } = req.body;
     const result = await db.createAssessmentText({
       examId,
@@ -344,3 +349,4 @@ export function registerRestRoutes(app: Express) {
     res.status(500).json({ error: err.message || "Internal server error" });
   });
 }
+

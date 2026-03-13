@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
-import { authAPI } from "@/lib/api";
+import { trpc } from "@/lib/trpc";
 
 export interface User {
   id: number;
-  openId: string;
+  openId: string | null;
   name: string | null;
-  email: string | null;
+  email: string;
+  phone: string | null;
   loginMethod: string | null;
   role: "user" | "admin";
   createdAt: string;
@@ -14,60 +14,30 @@ export interface User {
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const authQuery = trpc.auth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5000,
+  });
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const response = await authAPI.getMe();
-        const userData = response.data;
-        if (userData && typeof userData === "object" && userData.id) {
-          sessionStorage.removeItem("dev_login_redirected");
-          setUser(userData);
-          setIsAuthenticated(true);
-        } else {
-          setUser(null);
-          setIsAuthenticated(false);
-          // في بيئة التطوير، سجّل الدخول تلقائياً (مرة واحدة فقط)
-          if (import.meta.env.MODE === "development" && !sessionStorage.getItem("dev_login_redirected")) {
-            sessionStorage.setItem("dev_login_redirected", "1");
-            window.location.href = "/api/dev/login";
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch user:", error);
-        setUser(null);
-        setIsAuthenticated(false);
-        if (import.meta.env.MODE === "development" && !sessionStorage.getItem("dev_login_redirected")) {
-          sessionStorage.setItem("dev_login_redirected", "1");
-          window.location.href = "/api/dev/login";
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUser();
-  }, []);
-
-  const logout = async () => {
-    try {
-      await authAPI.logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
-    } finally {
-      setUser(null);
-      setIsAuthenticated(false);
+  const logoutMutation = trpc.auth.logout.useMutation({
+    onSuccess: () => {
+      sessionStorage.setItem("manual_logout", "1");
+      authQuery.refetch();
       window.location.href = "/";
-    }
-  };
+    },
+  });
+
+  // Derived states to avoid sync issues
+  const user = authQuery.data ?? null;
+  const isAuthenticated = !!authQuery.data;
+  const loading = authQuery.isLoading || authQuery.isRefetching;
 
   return {
     user,
-    loading,
     isAuthenticated,
-    logout,
+    loading,
+    logout: () => logoutMutation.mutate(),
+    refetch: () => authQuery.refetch(),
   };
 }

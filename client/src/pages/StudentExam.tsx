@@ -6,6 +6,9 @@ import { Loader2, Sparkles, HelpCircle, ChevronRight, ChevronLeft } from "lucide
 import { trpc } from "@/lib/trpc";
 import { AIChatBox } from "@/components/AIChatBox";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertCircle, Clock, CheckCircle2, XCircle, MessageSquare, ArrowLeft } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function StudentExam() {
   const { id } = useParams<{ id: string }>();
@@ -15,8 +18,29 @@ export default function StudentExam() {
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [startedAt] = useState(new Date());
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // Prevent accidental exit
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // We don't have isSubmitting here, but we can check if it's not the last step or results page
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  const handleExitRequest = () => {
+    setShowExitConfirm(true);
+  };
+
+  const confirmExit = () => {
+    navigate("/", { replace: true });
+  };
 
   const examQuery = trpc.exams.getById.useQuery({ id: examId });
   const questionsQuery = trpc.exams.getQuestions.useQuery({ examId });
@@ -42,17 +66,37 @@ export default function StudentExam() {
     );
   }
 
-  if (!examQuery.data || !questions) {
+  if (!examQuery.data || questions.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
-        <h2 className="text-2xl font-bold mb-4">الاختبار غير موجود</h2>
-        <Button onClick={() => navigate("/")}>العودة للرئيسية</Button>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4 text-center">
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+          <HelpCircle className="w-8 h-8 text-red-500" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">
+          {!examQuery.data ? "الاختبار غير موجود" : "لا توجد أسئلة متوفرة"}
+        </h2>
+        <p className="text-gray-400 mb-8 max-w-md">
+          {!examQuery.data 
+            ? "عذراً، لم نتمكن من العثور على الاختبار المطلوب." 
+            : "هذا الاختبار لا يحتوي على أسئلة حالياً. يرجى مراجعة الإدارة."}
+        </p>
+        <Button onClick={() => navigate("/")} className="bg-blue-600 hover:bg-blue-700 h-12 px-8 rounded-xl">
+          العودة للرئيسية
+        </Button>
       </div>
     );
   }
 
   const handleSelectOption = (optionId: string) => {
+    if (showFeedback) return;
     setAnswers(prev => ({ ...prev, [currentQuestion.id]: optionId }));
+  };
+
+  const handleConfirm = () => {
+    if (!answers[currentQuestion.id]) {
+      toast.error("الرجاء اختيار إجابة أولاً");
+      return;
+    }
     setShowFeedback(true);
   };
 
@@ -70,18 +114,19 @@ export default function StudentExam() {
     } else {
       setCurrentQuestionIdx(prev => prev + 1);
       setShowFeedback(false);
+      setShowExplanation(false);
     }
   };
 
   const progress = ((currentQuestionIdx + 1) / questions.length) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
+    <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-xl font-bold text-white">{examQuery.data.title}</h1>
-          <Button variant="outline" className="border-slate-700 text-gray-400" onClick={() => navigate("/")}>
+          <Button variant="outline" className="border-slate-700 text-gray-400" onClick={handleExitRequest}> {/* Changed onClick */}
             إنهاء الاختبار
           </Button>
         </div>
@@ -94,7 +139,7 @@ export default function StudentExam() {
           </div>
           <div className="w-full bg-slate-800 rounded-full h-2">
             <div 
-              className="bg-gradient-to-r from-blue-600 to-cyan-500 h-2 rounded-full transition-all duration-300" 
+              className="bg-linear-to-r from-blue-600 to-cyan-500 h-2 rounded-full transition-all duration-300" 
               style={{ width: `${progress}%` }}
             ></div>
           </div>
@@ -142,47 +187,69 @@ export default function StudentExam() {
             })}
           </div>
 
-          {/* Feedback Section */}
+          {/* Feedback & Actions */}
           {showFeedback && (
-            <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-8 animate-in fade-in slide-in-from-bottom-4">
-              <div className="flex items-start gap-4">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+              <div className={`p-4 rounded-xl border flex items-center gap-4 ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
                 <div className={`p-2 rounded-lg ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
                   <HelpCircle className={`w-5 h-5 ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'text-green-500' : 'text-red-500'}`} />
                 </div>
-                <div>
-                  <p className={`font-bold mb-2 ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'text-green-400' : 'text-red-400'}`}>
-                    {answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'إجابة صحيحة!' : 'إجابة خاطئة'}
-                  </p>
+                <p className={`font-bold ${answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'text-green-400' : 'text-red-400'}`}>
+                  {answers[currentQuestion.id] === currentQuestion.correctOptionId ? 'إجابة صحيحة!' : 'إجابة خاطئة'}
+                </p>
+              </div>
+
+              {showExplanation && (
+                <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 animate-in zoom-in-95">
+                  <h4 className="text-blue-400 font-bold mb-2 flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4" />
+                    الشرح التعليمي
+                  </h4>
                   <p className="text-gray-300 text-sm leading-relaxed">
                     {currentQuestion.explanation || "لا يوجد شرح متوفر لهذا السؤال حالياً."}
                   </p>
                 </div>
+              )}
+
+              <div className="flex flex-col md:flex-row gap-4">
+                <Button
+                  onClick={handleNext}
+                  disabled={submitMutation.isPending}
+                  className="flex-3 bg-linear-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white py-6 text-lg rounded-xl"
+                >
+                  {submitMutation.isPending ? <Loader2 className="animate-spin" /> : (isLastQuestion ? "إنهاء وتسليم الاختبار" : "السؤال التالي")}
+                  {!isLastQuestion && <ChevronLeft className="mr-2 w-5 h-5" />}
+                </Button>
+
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowExplanation(!showExplanation)}
+                  className="flex-1 border-slate-700 text-gray-300 hover:bg-slate-800 py-6 rounded-xl"
+                >
+                  {showExplanation ? "إخفاء التوضيح" : "عرض التوضيح"}
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsChatOpen(true)}
+                  className="flex-1 border-slate-700 text-gray-300 hover:bg-slate-800 py-6 rounded-xl flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-5 h-5 text-cyan-400" />
+                  اسأل الذكاء
+                </Button>
               </div>
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex flex-col md:flex-row gap-4">
+          {!showFeedback && (
             <Button
-              onClick={handleNext}
-              disabled={!answers[currentQuestion.id] || submitMutation.isPending}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white py-6 text-lg rounded-xl"
+              onClick={handleConfirm}
+              disabled={!answers[currentQuestion.id]}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6 text-lg rounded-xl shadow-lg shadow-blue-500/20"
             >
-              {submitMutation.isPending ? <Loader2 className="animate-spin" /> : (isLastQuestion ? "إنهاء وتسليم الاختبار" : "السؤال التالي")}
-              {!isLastQuestion && <ChevronLeft className="mr-2 w-5 h-5" />}
+              تأكيد الإجابة
             </Button>
-            
-            {showFeedback && (
-              <Button 
-                variant="outline" 
-                onClick={() => setIsChatOpen(true)}
-                className="border-slate-700 text-gray-300 hover:bg-slate-800 py-6 rounded-xl flex items-center gap-2"
-              >
-                <Sparkles className="w-5 h-5 text-cyan-400" />
-                اسأل الذكاء الاصطناعي
-              </Button>
-            )}
-          </div>
+          )}
         </Card>
 
         {/* Info Grid */}
@@ -216,7 +283,6 @@ export default function StudentExam() {
                   {
                     id: 'system-1',
                     role: 'assistant',
-                    content: `مرحباً! أنا مساعدك الذكي. السؤال الحالي هو: "${currentQuestion.text}". كيف يمكنني مساعدتك في فهمه؟`,
                     parts: [{ type: 'text', text: `مرحباً! أنا مساعدك الذكي. السؤال الحالي هو: "${currentQuestion.text}". كيف يمكنني مساعدتك في فهمه؟` }]
                   }
                 ]}
@@ -227,6 +293,37 @@ export default function StudentExam() {
           </div>
         </div>
       )}
+      {/* Exit Confirmation Dialog */}
+      <Dialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>هل أنت متأكد من الخروج؟</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-gray-400 text-sm">
+            <div className="flex items-center gap-3 p-4 bg-red-950/20 border border-red-500/20 rounded-lg text-red-400 mb-4">
+                <HelpCircle className="w-5 h-5 flex-shrink-0" />
+                <p>إذا خرجت الآن، فسوف تخسر تقدمك في هذا الاختبار. بالنسبة للاختبارات المدفوعة، قد تحتاج لاستخدام كود جديد للدخول مرة أخرى.</p>
+            </div>
+            <p>هل تريد حقاً إنهاء الاختبار والعودة للصفحة الرئيسية؟</p>
+          </div>
+          <div className="flex gap-3 mt-4">
+            <Button 
+                variant="destructive" 
+                className="flex-1 font-bold h-12 rounded-xl"
+                onClick={confirmExit}
+            >
+                نعم، اخرج الآن
+            </Button>
+            <Button 
+                variant="outline" 
+                className="flex-1 border-slate-700 hover:bg-slate-800 text-white h-12 rounded-xl"
+                onClick={() => setShowExitConfirm(false)}
+            >
+                لا، أكمل الاختبار
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

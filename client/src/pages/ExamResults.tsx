@@ -24,12 +24,12 @@ export default function ExamResults() {
 
   if (!result) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-4 text-center">
+      <Card className="bg-linear-to-br from-slate-900 to-slate-950 border-slate-800 p-6 flex flex-col items-center justify-center text-center">
         <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
         <h2 className="text-2xl font-bold mb-2">النتيجة غير موجودة</h2>
         <p className="text-gray-400 mb-6">عذراً، لم نتمكن من العثور على بيانات هذا الاختبار.</p>
         <Button onClick={() => navigate("/")} className="bg-blue-600 hover:bg-blue-700 text-white">العودة للرئيسية</Button>
-      </div>
+      </Card>
     );
   }
 
@@ -57,7 +57,7 @@ export default function ExamResults() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
+    <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header Navigation */}
         <div className="flex justify-between items-center mb-10">

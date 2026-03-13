@@ -1,9 +1,13 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
 // Generate login URL at runtime so redirect URI reflects the current origin.
-export const getLoginUrl = () => {
+export const getLoginUrl = (role?: "admin" | "user") => {
   if (import.meta.env.MODE === "development") {
-    return "/api/dev/login";
+    const url = new URL("/dev-login", window.location.origin);
+    if (role) {
+      url.searchParams.set("role", role);
+    }
+    return url.toString();
   }
 
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;

@@ -269,6 +269,9 @@ class SDKServer {
     const sessionUserId = session.openId;
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
+    if (!user) {
+      user = await db.getUserByEmail(sessionUserId);
+    }
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
@@ -277,28 +280,29 @@ class SDKServer {
         await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
-          email: userInfo.email ?? null,
+          email: userInfo.email || "unknown@oauth.com", // Ensure email is not null
           loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
           lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(userInfo.openId);
+        } as any); // Type cast to bypass strict check during sync if needed
+        user = (await db.getUserByOpenId(userInfo.openId)) || (await db.getUserByEmail(userInfo.email || ""));
       } catch (error) {
         console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
       }
     }
 
-    if (!user) {
+    if (user) {
+      await db.upsertUser({
+        email: user.email,
+        openId: user.openId,
+        lastSignedIn: signedInAt,
+      } as any);
+    } else {
       throw ForbiddenError("User not found");
     }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
 
     return user;
   }
 }
+
 
 export const sdk = new SDKServer();
