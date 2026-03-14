@@ -392,39 +392,11 @@ export const appRouter = router({
         return db.updateExamCode(examCode.id, { 
           currentUses: (examCode.currentUses || 0) + 1 
         });
-      }),ut }) => {
-        const examCode = await db.getExamCodeByCode(input.code);
-        if (!examCode) throw new TRPCError({ code: "NOT_FOUND", message: "الكود غير صحيح" });
-        
-        if (!examCode.isActive) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "الكود غير نشط" });
-        }
-
-        if (examCode.expiresAt && new Date() > examCode.expiresAt) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "انتهت صلاحية الكود" });
-        }
-
-        if (examCode.maxUses && examCode.currentUses && examCode.currentUses >= examCode.maxUses) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "تم استنفاد عدد استخدامات الكود" });
-        }
-
-        return { examId: examCode.examId, valid: true, id: examCode.id };
       }),
 
     getByExam: adminProcedure
       .input(z.object({ examId: z.number() }))
       .query(({ input }) => db.getExamCodesByExam(input.examId)),
-
-    use: publicProcedure
-      .input(z.object({ code: z.string() }))
-      .mutation(async ({ input }) => {
-        const examCode = await db.getExamCodeByCode(input.code);
-        if (!examCode) throw new TRPCError({ code: "NOT_FOUND" });
-        
-        return db.updateExamCode(examCode.id, {
-          currentUses: (examCode.currentUses || 0) + 1,
-        });
-      }),
 
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
