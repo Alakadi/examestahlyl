@@ -27,18 +27,6 @@ export default function SubjectDetail() {
   const sectionsQuery = trpc.sections.getBySubject.useQuery({ subjectId });
   const validateCodeMutation = trpc.examCodes.validate.useMutation();
 
-  if (subjectQuery.isLoading || examsQuery.isLoading || sectionsQuery.isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
-
-  const subject = subjectQuery.data;
-  const exams = examsQuery.data || [];
-  const sections = sectionsQuery.data || [];
-
   const useCodeMutation = trpc.examCodes.use.useMutation();
   const redeemPointsMutation = trpc.examCodes.redeemPoints.useMutation({
     onSuccess: (data) => {
@@ -63,6 +51,18 @@ export default function SubjectDetail() {
       toast.error(error.message || "فشل فتح الاختبار");
     }
   });
+
+  if (subjectQuery.isLoading || examsQuery.isLoading || sectionsQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  const subject = subjectQuery.data;
+  const exams = examsQuery.data || [];
+  const sections = sectionsQuery.data || [];
 
   const getSettingValue = (key: string, defaultValue: string) => {
     return settings?.find(s => s.key === key)?.value || defaultValue;

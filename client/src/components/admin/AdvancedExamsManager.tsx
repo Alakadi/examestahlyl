@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Settings } from "lucide-react";
+import { Plus, Settings, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -58,6 +58,16 @@ export default function AdvancedExamsManager() {
     },
     onError: (error) => {
       toast.error(error.message || "حدث خطأ");
+    },
+  });
+
+  const deleteExamMutation = trpc.exams.delete.useMutation({
+    onSuccess: () => {
+      toast.success("تم حذف الاختبار بنجاح");
+      refetchExams();
+    },
+    onError: (error) => {
+      toast.error(error.message || "فشل حذف الاختبار");
     },
   });
 
@@ -269,8 +279,18 @@ export default function AdvancedExamsManager() {
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-gray-500 hover:text-white hover:bg-slate-800">
-                            <Settings className="w-4 h-4" />
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-gray-500 hover:text-red-500 hover:bg-red-500/10"
+                          onClick={() => {
+                            if (confirm("هل أنت متأكد من حذف هذا الاختبار؟")) {
+                              deleteExamMutation.mutate({ id: exam.id });
+                            }
+                          }}
+                          disabled={deleteExamMutation.isPending}
+                        >
+                            <Trash2 className="w-4 h-4" />
                         </Button>
                     </div>
                   </div>

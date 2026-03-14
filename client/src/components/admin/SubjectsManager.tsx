@@ -32,6 +32,16 @@ export default function SubjectsManager() {
     },
   });
 
+  const deleteMutation = trpc.subjects.delete.useMutation({
+    onSuccess: () => {
+      toast.success("تم حذف المادة بنجاح");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || "فشل حذف المادة");
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) {
@@ -131,7 +141,17 @@ export default function SubjectsManager() {
                   <Button size="sm" variant="ghost" className="text-gray-400 hover:text-blue-400">
                     <Edit2 className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-gray-400 hover:text-red-400">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="text-gray-400 hover:text-red-400"
+                    onClick={() => {
+                      if (confirm("هل أنت متأكد من حذف هذه المادة؟ سيتم حذف جميع الأقسام والأسئلة المرتبطة بها.")) {
+                        deleteMutation.mutate({ id: subject.id });
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
