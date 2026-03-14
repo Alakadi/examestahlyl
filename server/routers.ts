@@ -1,3 +1,4 @@
+
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -370,6 +371,28 @@ export const appRouter = router({
     validate: publicProcedure
       .input(z.object({ code: z.string() }))
       .mutation(async ({ input }) => {
+        const examCode = await db.getExamCodeByCode(input.code);
+        if (!examCode) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "الكود غير صحيح" });
+        }
+        if (!examCode.isActive || (examCode.expiresAt && new Date() > examCode.expiresAt)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "الكود غير نشط أو منتهي الصلاحية" });
+        }
+        if (examCode.maxUses && examCode.currentUses && examCode.currentUses >= examCode.maxUses) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "تم استنفاد الكود" });
+        }
+        return { valid: true, examId: examCode.examId, id: examCode.id };
+      }),
+
+    use: publicProcedure
+      .input(z.object({ code: z.string() }))
+      .mutation(async ({ input }) => {
+        const examCode = await db.getExamCodeByCode(input.code);
+        if (!examCode) throw new TRPCError({ code: "NOT_FOUND" });
+        return db.updateExamCode(examCode.id, { 
+          currentUses: (examCode.currentUses || 0) + 1 
+        });
+      }),ut }) => {
         const examCode = await db.getExamCodeByCode(input.code);
         if (!examCode) throw new TRPCError({ code: "NOT_FOUND", message: "الكود غير صحيح" });
         

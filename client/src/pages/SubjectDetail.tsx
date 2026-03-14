@@ -1,3 +1,4 @@
+
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -218,60 +219,61 @@ export default function SubjectDetail() {
                               ابدأ الاختبار
                             </Button>
                           ) : (
-                            <>
-                            {pointsEnabled && exam.pointsToUnlock > 0 && (
-                              <Button 
-                                onClick={() => {
-                                  if (confirm(`هل تريد فتح هذا الاختبار مقابل ${exam.pointsToUnlock} نقطة؟`)) {
-                                    unlockWithPointsMutation.mutate({ examId: exam.id });
-                                  }
-                                }}
-                                disabled={unlockWithPointsMutation.isPending || (user?.points || 0) < exam.pointsToUnlock}
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                              >
-                                <CreditCard className="w-4 h-4 ml-2" />
-                                {exam.pointsToUnlock} نقطة
-                              </Button>
-                            )}
-                            
-                            {showCodeInput === exam.id ? (
-                              <div className="space-y-2 animate-in fade-in slide-in-from-right-2">
-                                <input
-                                  autoFocus
-                                  type="text"
-                                  value={code}
-                                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                                  placeholder="أدخل الكود"
-                                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-center text-sm focus:border-pink-500 outline-none"
-                                />
-                                <div className="flex gap-2">
-                                  <Button 
-                                    size="sm"
-                                    disabled={isValidating}
-                                    onClick={() => handleValidateCode(exam.id)}
-                                    className="flex-1 bg-pink-600 hover:bg-pink-700 text-white text-xs"
-                                  >
-                                    {isValidating ? <Loader2 className="w-3 h-3 animate-spin" /> : "تأكيد"}
-                                  </Button>
-                                  <Button 
-                                    size="sm"
-                                    variant="ghost" 
-                                    onClick={() => setShowCodeInput(null)}
-                                    className="text-gray-400 text-xs"
-                                  >
-                                    إلغاء
-                                  </Button>
+                            <div className="flex flex-col gap-2">
+                              {pointsEnabled && exam.pointsToUnlock > 0 && (
+                                <Button 
+                                  onClick={() => {
+                                    if (confirm(`هل تريد فتح هذا الاختبار مقابل ${exam.pointsToUnlock} نقطة؟`)) {
+                                      unlockWithPointsMutation.mutate({ examId: exam.id });
+                                    }
+                                  }}
+                                  disabled={unlockWithPointsMutation.isPending || (user?.points || 0) < (exam.pointsToUnlock || 0)}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                  <CreditCard className="w-4 h-4 ml-2" />
+                                  {exam.pointsToUnlock} نقطة
+                                </Button>
+                              )}
+                              
+                              {showCodeInput === exam.id ? (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-right-2">
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                                    placeholder="أدخل الكود"
+                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-center text-sm focus:border-pink-500 outline-none"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      size="sm"
+                                      disabled={isValidating}
+                                      onClick={() => handleValidateCode(exam.id)}
+                                      className="flex-1 bg-pink-600 hover:bg-pink-700 text-white text-xs"
+                                    >
+                                      {isValidating ? <Loader2 className="w-3 h-3 animate-spin" /> : "تأكيد"}
+                                    </Button>
+                                    <Button 
+                                      size="sm"
+                                      variant="ghost" 
+                                      onClick={() => setShowCodeInput(null)}
+                                      className="text-gray-400 text-xs"
+                                    >
+                                      إلغاء
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <Button 
-                                onClick={() => setShowCodeInput(exam.id)}
-                                className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
-                              >
-                                <Lock className="w-4 h-4 ml-2 text-pink-500" />
-                                فتح الاختبار
-                              </Button>
-                            )
+                              ) : (
+                                <Button 
+                                  onClick={() => setShowCodeInput(exam.id)}
+                                  className="bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
+                                >
+                                  <Lock className="w-4 h-4 ml-2 text-pink-500" />
+                                  فتح الاختبار
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
