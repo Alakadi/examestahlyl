@@ -21,6 +21,7 @@ export default function AdvancedExamsManager() {
     totalQuestions: 50,
     timeLimit: 60,
     passingScore: 60,
+    pointsToUnlock: 0,
   });
 
   const { data: subjects } = trpc.subjects.getAll.useQuery();
@@ -49,6 +50,7 @@ export default function AdvancedExamsManager() {
         totalQuestions: 50,
         timeLimit: 60,
         passingScore: 60,
+        pointsToUnlock: 0,
       });
       setSectionDistribution({});
       setIsCreating(false);
@@ -193,6 +195,15 @@ export default function AdvancedExamsManager() {
                             className="bg-slate-800 border-slate-600 text-white mt-1"
                         />
                         </div>
+                        <div>
+                        <label className="text-sm text-gray-300">نقاط الفتح</label>
+                        <Input
+                            type="number"
+                            value={formData.pointsToUnlock}
+                            onChange={(e) => setFormData({ ...formData, pointsToUnlock: Number(e.target.value) })}
+                            className="bg-slate-800 border-slate-600 text-white mt-1"
+                        />
+                        </div>
                     </div>
 
                     <div>
@@ -283,12 +294,14 @@ export default function AdvancedExamsManager() {
                     >
                         تعديل
                     </Button>
-                    {exam.type === "paid" && (
+                    {(exam.type === "paid" || exam.pointsToUnlock > 0) && (
                         <Button 
                             size="sm"
                             className="flex-1 text-xs bg-pink-600/10 hover:bg-pink-600 transition text-pink-500 hover:text-white h-9 border border-pink-600/30"
                             onClick={() => {
-                                (window as any).setActiveAdminTab?.("codes", exam.id);
+                                // We can't easily call setActiveAdminTab from here, 
+                                // so we'll just show a toast or navigate if we had a proper router state
+                                toast.info("انتقل لتبويب الأكواد واختر هذا الاختبار");
                             }}
                         >
                             الأكواد

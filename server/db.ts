@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { 
-  InsertUser, users, subjects, sections, questions, exams, examCodes, examResults, assessmentTexts,
-  InsertSubject, InsertSection, InsertQuestion, InsertExam, InsertExamCode, InsertExamResult, InsertAssessmentText 
+  InsertUser, users, subjects, sections, questions, exams, examCodes, examResults, assessmentTexts, settings,
+  InsertSubject, InsertSection, InsertQuestion, InsertExam, InsertExamCode, InsertExamResult, InsertAssessmentText, InsertSetting
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -234,6 +234,47 @@ export async function deleteExamCode(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(examCodes).where(eq(examCodes.id, id));
+}
+
+// Points and Wallet
+export async function updateUserPoints(userId: number, points: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(users).set({ points: sql`${users.points} + ${points}` }).where(eq(users.id, userId)).returning();
+}
+
+export async function deductUserPoints(userId: number, points: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Security check: ensure user has enough points
+  const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user[0] || user[0].points < points) {
+    throw new Error("لا يوجد رصيد كافٍ في المحفظة");
+  }
+  return db.update(users).set({ points: sql`${users.points} - ${points}` }).where(eq(users.id, userId)).returning();
+}
+
+// Settings
+export async function getSetting(key: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
+  return result[0]?.value;
+}
+
+export async function updateSetting(key: string, value: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(settings).values({ key, value }).onConflictDoUpdate({
+    target: settings.key,
+    set: { value, updatedAt: new Date() }
+  }).returning();
+}
+
+export async function getAllSettings() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.select().from(settings);
 }
 
 // Exam results queries

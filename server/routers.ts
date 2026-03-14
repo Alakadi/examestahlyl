@@ -207,6 +207,7 @@ export const appRouter = router({
         sectionDistribution: z.array(z.object({ sectionId: z.number(), count: z.number() })),
         timeLimit: z.number().optional(),
         passingScore: z.number().optional(),
+        pointsToUnlock: z.number().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         return db.createExam({
@@ -275,40 +276,95 @@ export const appRouter = router({
   examCodes: router({
     create: adminProcedure
       .input(z.object({
-        examId: z.number(),
+        examId: z.number().optional(),
         maxUses: z.number().optional(),
         expiresAt: z.date().optional(),
+        pointsValue: z.number().optional(),
+        type: z.enum(["exam", "points"]).default("exam"),
       }))
       .mutation(async ({ input }) => {
         const code = nanoid(10).toUpperCase();
         return db.createExamCode({
-          ...input,
+          examId: input.examId || 0,
           code,
+          maxUses: input.maxUses || 1,
+          expiresAt: input.expiresAt,
+          pointsValue: input.pointsValue || 0,
+          type: input.type,
           isActive: true,
         });
       }),
 
     generate: adminProcedure
       .input(z.object({
-        examId: z.number(),
+        examId: z.number().optional(),
         quantity: z.number().min(1).max(100),
         maxUses: z.number().optional(),
         expiresAt: z.date().optional(),
+        pointsValue: z.number().optional(),
+        type: z.enum(["exam", "points"]).default("exam"),
       }))
       .mutation(async ({ input }) => {
         const results = [];
         for (let i = 0; i < input.quantity; i++) {
           const code = nanoid(10).toUpperCase();
           const result = await db.createExamCode({
-            examId: input.examId,
+            examId: input.examId || 0,
             code,
             maxUses: input.maxUses || 1,
             expiresAt: input.expiresAt,
+            pointsValue: input.pointsValue || 0,
+            type: input.type,
             isActive: true,
           });
           results.push(result);
         }
         return results;
+      }),
+
+    redeemPoints: protectedProcedure
+      .input(z.object({ code: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const examCode = await db.getExamCodeByCode(input.code);
+        if (!examCode || examCode.type !== "points") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "كود النقاط غير صحيح" });
+        }
+        if (!examCode.isActive || (examCode.expiresAt && new Date() > examCode.expiresAt)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "الكود غير نشط أو منتهي الصلاحية" });
+        }
+        if (examCode.maxUses && examCode.currentUses && examCode.currentUses >= examCode.maxUses) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "تم استنفاد الكود" });
+        }
+
+        // Update user points and mark code as used
+        await db.updateUserPoints(ctx.user.id, examCode.pointsValue || 0);
+        await db.updateExamCode(examCode.id, { currentUses: (examCode.currentUses || 0) + 1 });
+        
+        return { success: true, pointsAdded: examCode.pointsValue };
+      }),
+
+    unlockWithPoints: protectedProcedure
+      .input(z.object({ examId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const exam = await db.getExamById(input.examId);
+        if (!exam) throw new TRPCError({ code: "NOT_FOUND", message: "الاختبار غير موجود" });
+        
+        const pointsRequired = exam.pointsToUnlock || 0;
+        if (pointsRequired <= 0) return { success: true };
+
+        await db.deductUserPoints(ctx.user.id, pointsRequired);
+        
+        // We can create a special exam code for this user or log it
+        const code = `POINTS-${ctx.user.id}-${exam.id}-${Date.now()}`;
+        await db.createExamCode({
+          examId: exam.id,
+          code,
+          maxUses: 1,
+          isActive: true,
+          type: "exam",
+        });
+
+        return { success: true, code };
       }),
 
     validate: publicProcedure
@@ -431,19 +487,27 @@ export const appRouter = router({
         minScore: z.number(),
         maxScore: z.number(),
         text: z.string(),
-        sectionConditions: z.array(z.object({
-          sectionId: z.number(),
-          minScore: z.number(),
-          maxScore: z.number(),
-          text: z.string(),
-        })).optional(),
+        sectionConditions: z.array(z.object({ sectionId: z.number(), minScore: z.number(), maxScore: z.number(), text: z.string() })).optional(),
       }))
       .mutation(({ input }) => db.createAssessmentText(input)),
 
     getByExam: publicProcedure
       .input(z.object({ examId: z.number() }))
       .query(({ input }) => db.getAssessmentTextsByExam(input.examId)),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteAssessmentText(input.id)),
+  }),
+
+  // Settings
+  settings: router({
+    getAll: publicProcedure.query(() => db.getAllSettings()),
+    get: publicProcedure
+      .input(z.object({ key: z.string() }))
+      .query(({ input }) => db.getSetting(input.key)),
+    update: adminProcedure
+      .input(z.object({ key: z.string(), value: z.string() }))
+      .mutation(({ input }) => db.updateSetting(input.key, input.value)),
   }),
 });
-
-export type AppRouter = typeof appRouter;

@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: text("role").$type<"user" | "admin">().default("user").notNull(),
   isEmailVerified: boolean("isEmailVerified").default(false).notNull(),
+  points: integer("points").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -83,6 +84,7 @@ export const exams = pgTable("exams", {
   sectionDistribution: jsonb("sectionDistribution").$type<{ sectionId: number; count: number }[]>().notNull(),
   timeLimit: integer("timeLimit"),
   passingScore: integer("passingScore").default(60),
+  pointsToUnlock: integer("pointsToUnlock").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -114,6 +116,8 @@ export const examCodes = pgTable("examCodes", {
   currentUses: integer("currentUses").default(0),
   isActive: boolean("isActive").default(true),
   expiresAt: timestamp("expiresAt"),
+  pointsValue: integer("pointsValue").default(0),
+  type: text("type").$type<"exam" | "points">().default("exam"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -149,3 +153,14 @@ export const codeUsageLog = pgTable("codeUsageLog", {
 
 export type CodeUsageLog = typeof codeUsageLog.$inferSelect;
 export type InsertCodeUsageLog = typeof codeUsageLog.$inferInsert;
+
+// إعدادات النظام
+export const settings = pgTable("settings", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  key: varchar("key", { length: 255 }).notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type Setting = typeof settings.$inferSelect;
+export type InsertSetting = typeof settings.$inferInsert;

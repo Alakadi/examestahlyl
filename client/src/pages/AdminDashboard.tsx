@@ -6,6 +6,7 @@ import SectionsQuestionsManager from "@/components/admin/SectionsQuestionsManage
 import AdvancedExamsManager from "@/components/admin/AdvancedExamsManager";
 import AdvancedCodesManager from "@/components/admin/AdvancedCodesManager";
 import AssessmentManager from "@/components/admin/AssessmentManager";
+import PointsManager from "@/components/admin/PointsManager";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("subjects");
@@ -19,7 +20,7 @@ export default function AdminDashboard() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 bg-slate-900 border border-slate-700">
+          <TabsList className="grid w-full grid-cols-6 bg-slate-900 border border-slate-700">
             <TabsTrigger value="subjects" className="data-[state=active]:bg-blue-600">
               المواد
             </TabsTrigger>
@@ -31,6 +32,9 @@ export default function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="codes" className="data-[state=active]:bg-blue-600">
               الأكواد
+            </TabsTrigger>
+            <TabsTrigger value="points" className="data-[state=active]:bg-blue-600">
+              النقاط
             </TabsTrigger>
             <TabsTrigger value="assessment" className="data-[state=active]:bg-blue-600">
               التقييم
@@ -51,6 +55,10 @@ export default function AdminDashboard() {
 
           <TabsContent value="codes" className="mt-6">
             <AdvancedCodesManager />
+          </TabsContent>
+
+          <TabsContent value="points" className="mt-6">
+            <PointsManager />
           </TabsContent>
 
           <TabsContent value="assessment" className="mt-6">

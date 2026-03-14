@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2 } from "lucide-react";
+import { Plus, Trash2, Edit2, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 export default function SubjectsManager() {
   const [isOpen, setIsOpen] = useState(false);
+  const [, navigate] = useLocation();
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -123,6 +125,9 @@ export default function SubjectsManager() {
                   )}
                 </div>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" className="text-gray-400 hover:text-blue-400" onClick={() => navigate(`/subject/${subject.id}`)}>
+                    <Eye className="w-4 h-4" />
+                  </Button>
                   <Button size="sm" variant="ghost" className="text-gray-400 hover:text-blue-400">
                     <Edit2 className="w-4 h-4" />
                   </Button>

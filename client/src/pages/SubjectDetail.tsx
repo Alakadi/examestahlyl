@@ -1,10 +1,12 @@
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Lock, Play, Loader2, ChevronRight, BookOpen, Layers } from "lucide-react";
+import { Lock, Play, Loader2, ChevronRight, BookOpen, Layers, Wallet, CreditCard, Ticket } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export default function SubjectDetail() {
   const { id } = useParams<{ id: string }>();
@@ -14,7 +16,11 @@ export default function SubjectDetail() {
   const [showCodeInput, setShowCodeInput] = useState<number | null>(null);
   const [code, setCode] = useState("");
   const [isValidating, setIsValidating] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
+  const [pointsCode, setPointsCode] = useState("");
+  const { user, refetch: refetchAuth } = useAuth();
 
+  const { data: settings } = trpc.settings.getAll.useQuery();
   const subjectQuery = trpc.subjects.getById.useQuery({ id: subjectId });
   const examsQuery = trpc.exams.getBySubject.useQuery({ subjectId });
   const sectionsQuery = trpc.sections.getBySubject.useQuery({ subjectId });
@@ -32,6 +38,38 @@ export default function SubjectDetail() {
   const exams = examsQuery.data || [];
   const sections = sectionsQuery.data || [];
 
+  const useCodeMutation = trpc.examCodes.use.useMutation();
+  const redeemPointsMutation = trpc.examCodes.redeemPoints.useMutation({
+    onSuccess: (data) => {
+      toast.success(`تم إضافة ${data.pointsAdded} نقطة لمحفظتك`);
+      setPointsCode("");
+      refetchAuth();
+    },
+    onError: (error) => {
+      toast.error(error.message || "فشل شحن النقاط");
+    }
+  });
+
+  const unlockWithPointsMutation = trpc.examCodes.unlockWithPoints.useMutation({
+    onSuccess: (data) => {
+      toast.success("تم فتح الاختبار بنجاح");
+      refetchAuth();
+      if (data.code) {
+        navigate(`/exam/${data.examId}?code=${data.code}`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || "فشل فتح الاختبار");
+    }
+  });
+
+  const getSettingValue = (key: string, defaultValue: string) => {
+    return settings?.find(s => s.key === key)?.value || defaultValue;
+  };
+
+  const pointsEnabled = getSettingValue("points_enabled", "true") === "true";
+  const freeExamsRequirePoints = getSettingValue("free_exams_require_points", "false") === "true";
+
   if (!subject) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
@@ -40,8 +78,6 @@ export default function SubjectDetail() {
       </div>
     );
   }
-
-  const useCodeMutation = trpc.examCodes.use.useMutation();
 
   const handleValidateCode = async (examId: number) => {
     if (!code.trim()) {
@@ -88,6 +124,46 @@ export default function SubjectDetail() {
               {subject.description || "استكشف هذه المادة وقم بإجراء الاختبارات لتقييم مستواك المعرفي."}
             </p>
           </div>
+          
+          {pointsEnabled && user && (
+            <Card className="bg-slate-900 border-slate-800 p-6 w-full md:w-64 shadow-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <Wallet className="w-5 h-5 text-blue-500" />
+                <h3 className="text-white font-bold">محفظة النقاط</h3>
+              </div>
+              <div className="text-3xl font-black text-white mb-4">{user.points || 0} <span className="text-xs text-gray-500 font-normal">نقطة</span></div>
+              
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-500/10">
+                    <Ticket className="w-4 h-4 ml-2" />
+                    شحن المحفظة
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-900 border-slate-700 text-white">
+                  <DialogHeader>
+                    <DialogTitle>شحن نقاط جديدة</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <input
+                      type="text"
+                      value={pointsCode}
+                      onChange={(e) => setPointsCode(e.target.value.toUpperCase())}
+                      placeholder="أدخل كود الشحن"
+                      className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-center outline-none focus:border-blue-500"
+                    />
+                    <Button 
+                      onClick={() => redeemPointsMutation.mutate({ code: pointsCode })}
+                      disabled={redeemPointsMutation.isPending || !pointsCode}
+                      className="w-full bg-blue-600 hover:bg-blue-700 h-12"
+                    >
+                      {redeemPointsMutation.isPending ? "جاري الشحن..." : "تأكيد الشحن"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </Card>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -132,8 +208,8 @@ export default function SubjectDetail() {
                           </div>
                         </div>
 
-                        <div className="flex flex-col justify-center min-w-[160px]">
-                          {exam.type === 'free' ? (
+                        <div className="flex flex-col justify-center min-w-[160px] gap-2">
+                          {exam.type === 'free' && !freeExamsRequirePoints ? (
                             <Button 
                               onClick={() => navigate(`/exam/${exam.id}`)}
                               className="bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white shadow-lg shadow-blue-600/20"
@@ -142,7 +218,23 @@ export default function SubjectDetail() {
                               ابدأ الاختبار
                             </Button>
                           ) : (
-                            showCodeInput === exam.id ? (
+                            <>
+                            {pointsEnabled && exam.pointsToUnlock > 0 && (
+                              <Button 
+                                onClick={() => {
+                                  if (confirm(`هل تريد فتح هذا الاختبار مقابل ${exam.pointsToUnlock} نقطة؟`)) {
+                                    unlockWithPointsMutation.mutate({ examId: exam.id });
+                                  }
+                                }}
+                                disabled={unlockWithPointsMutation.isPending || (user?.points || 0) < exam.pointsToUnlock}
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                <CreditCard className="w-4 h-4 ml-2" />
+                                {exam.pointsToUnlock} نقطة
+                              </Button>
+                            )}
+                            
+                            {showCodeInput === exam.id ? (
                               <div className="space-y-2 animate-in fade-in slide-in-from-right-2">
                                 <input
                                   autoFocus

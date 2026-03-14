@@ -28,6 +28,8 @@ export default function AdvancedCodesManager() {
     { enabled: !!selectedExam }
   );
 
+  const pointsEnabled = trpc.settings.get.useQuery({ key: "points_enabled" }).data === "true";
+
   const generateCodesMutation = trpc.examCodes.generate.useMutation({
     onSuccess: () => {
       toast.success("تم إنشاء الأكواد بنجاح");
@@ -98,7 +100,7 @@ export default function AdvancedCodesManager() {
             className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-white disabled:opacity-50"
           >
             <option value="">-- اختر اختبار --</option>
-            {exams?.filter((e: any) => e.type === "paid").map((exam: any) => (
+            {exams?.filter((e: any) => e.type === "paid" || (pointsEnabled && e.pointsToUnlock > 0)).map((exam: any) => (
               <option key={exam.id} value={exam.id}>
                 {exam.title}
               </option>
